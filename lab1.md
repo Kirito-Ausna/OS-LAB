@@ -42,6 +42,10 @@ oslab@3c1da3906541:~$
 
 **【请将该步骤中命令的输入及运行结果截图附在此处，接下来每一步同理。】**
 
+![image-20211005154714817](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211005154714817.png)
+
+![image-20211005160511430](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211005160511430.png)
+
 #### 2.测试映射关系
 
 为测试映射关系是否成功，再打开一个终端窗口，并进入`lab1`目录下。
@@ -53,7 +57,7 @@ $ ls
 testfile
 ```
 
-
+![image-20211005160709100](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211005160709100.png)
 
 在第一个终端窗口，即容器中确认是否挂载成功。确认映射关系建立成功后，可以在本地`lab1`目录下编写实验代码，文件将映射到容器中，因此可以直接在容器中进行实验。
 
@@ -67,7 +71,7 @@ oslab@3c1da3906541:~$ ls
 testfile
 ```
 
-
+![image-20211005160852284](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211005160852284.png)
 
 ### 3.2 了解项目框架，编写MakeFile（20%）
 
@@ -106,7 +110,13 @@ testfile
 ```makefile
 #lab1/arch/riscv/libs/Makefile 
 # YOUR MAKEFILE CODE
- 
+all: print.o
+
+%.o:%.c
+	${CC}  ${CFLAG}  -c $<
+
+clean:
+	$(shell rm *.o 2>/dev/null)
 
 ```
 
@@ -124,9 +134,7 @@ ${LD} -T arch/riscv/kernel/vmlinux.lds arch/riscv/kernel/*.o arch/riscv/libs/*.o
 ${OBJCOPY} -O binary vmlinux arch/riscv/boot/Image
 ```
 
-含义：
-
-
+含义：`${OBJCOPY}`被展开为riscv64-unknown-elf-objcopy，即内容拷贝命令，-O指定output即输出文件的bfdname为binary(二进制)，实现将`arch/riscv/boot/Image`中的内容拷贝到vmlinux文件中，并转为二进制。
 
 ```makefile
 ${MAKE} -C arch/riscv all
@@ -135,7 +143,7 @@ ${MAKE} -C arch/riscv all
 含义：
 `${MAKE}`的含义可以参见[这里](https://stackoverflow.com/questions/38978627/what-is-the-variable-make-in-a-makefile)
 
- 
+ `${MAKE}`是嵌套执行make命令的意思，-C表示进入文件`arch/riscv`中执行make, all表示编译目标，整个语句的意思是进入文件夹`arch/riscv`中执行make all指令，完成all目标的编译
 
 ### 3.3 学习RISC-V相关知识及特权架构（10%）
 
@@ -149,16 +157,16 @@ ${MAKE} -C arch/riscv all
 #1.加载立即数，t0=0x40000
 li t0,0x40000
 
-#2.
+#2.将to值写入satp CSR寄存器
 csrw satp, t0
 
-#3.
+#3.计算to-t1并把值保存在to中
 sub t0,t0,t1
 
-#4.
+#4.将x1值保存在寄存器8(sp)中
 sd x1, 8(sp)
 
-#5.
+#5.获取stack_top定义的地址数据，传递给sp寄存器
 la sp,stack_top
 ```
 
@@ -207,7 +215,19 @@ uint64_t sbi_call(uint64_t sbi_type, uint64_t arg0, uint64_t arg1, uint64_t arg2
 uint64_t sbi_call(uint64_t sbi_type, uint64_t arg0, uint64_t arg1, uint64_t arg2) {
     uint64_t ret_val;
     __asm__ volatile ( 
-    /*Your code*/
+   //Your code
+   //Asembly code
+        "mv a7, %[sbi_type]\n"// Assign value to the registers
+        "mv a0, %[arg0]\n"
+        "mv a1, %[arg1]\n"
+        "mv a2, %[arg2]\n"
+        "ecall\n"
+        "mv %[ret_val], a0\n"
+        //Output
+        : [ret_val] "=r" (ret_val) //Update the variable ret_val
+        //Input
+        : [sbi_type] "r" (sbi_type), [arg0] "r" (arg0), [arg1] "r" (arg1), [arg2] "r" (arg2) //Pass the c variable to registers
+        : "memory"
    );
     return ret_val;
 }
@@ -227,11 +247,26 @@ uint64_t sbi_call(uint64_t sbi_type, uint64_t arg0, uint64_t arg1, uint64_t arg2
 extern sbi_call();
 int puts(char* str){
 	// your code
+    int i = 0;
+	while (str[i] != '\0')
+	{
+		sbi_call(1,(int)str[i],0,0);
+		i++;
+	}
     return 0;
 }
 
 int put_num(uint64_t n){
 	// your code
+    if(n != 0){
+		char c = (int)(n%10) + '0';
+		char cstring[2];
+		cstring[0] = c;
+		cstring[1] = '\0';
+		n = n/10;
+		put_num(n);
+		puts(cstring);
+	}
 	return 0;
 }
 ```
@@ -245,213 +280,17 @@ int put_num(uint64_t n){
 如果程序能够正常执行并打印出相应的字符串及你的学号，则实验成功。预期的实验结果如下，请附上相应的命令行及实验结果截图。
 
 ```shell
-oslab@3c1da3906541:~/lab1$ make run
-Hello RISC-V!
-21922192
+oslab@fa503ace2456:~/lab1$ make run
+Hello riscv
+3180100055
 ```
+
+![image-20211013211329309](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211013211329309.png)
 
 ## 4 讨论和心得
 
-请在此处填写实验过程中遇到的问题及相应的解决方式。
+本次实验遇到的最大问题是RISCV相关指令的学习，由于之前没有接触过RISCV，并且实验指导只有一本书，让我望而生畏，实验停滞了很久。但是后来硬着头皮学了一下，发现收获很多，了解了指令集架构和汇编、操作系统等的关系，而且幸好完成本次实验本身并不太难。
 
-由于本实验为新实验，可能存在不足之处，欢迎同学们对本实验提出建议。
+随后就是遇到了一些小bug，都是C语言写的时候不仔细，很快就解决了。
 
-## 附录
-
-### A. Makefile介绍
-
-Makefile是一种实现关系整个工程编译规则的文件，通过自动化编译极大提高了软件开发的效率。一个工程中源文件，按类型，功能，模块分别放在若干个目录中，Makefile定义了一系列规则来指定哪些文件需要先编译，哪些文件需要后编译，哪些文件需要重新编译，甚至可以执行操作系统的命令。
-
-以C为例，源文件首先会生成中间目标文件，再由中间目标文件生成执行文件。在编译时，编译器只检测程序语法和函数、变量是否被声明。如果函数未被声明，编译器会给出一个警告，但可以生成Object File。而在链接程序时，链接器会在所有的Object File中找寻函数的实现，如果找不到，那到就会报告链接错误码。
-
-Lab0中我们已经使用了make工具利用Makefile文件来管理整个工程。请阅读[Makefile介绍 ](https://seisman.github.io/how-to-write-makefile/introduction.html)，根据工程文件夹里Makefile的代码与注释来掌握一些基本的使用技巧。
-
-### B. RISC-V指令集
-
-请**下载并认真阅读[RISC-V中文手册](crva.ict.ac.cn/documents/RISC-V-Reader-Chinese-v2p1.pdf)，**掌握基础知识、基本命令及特权架构相关内容。
-
-实验中涉及了特权相关的重要寄存器，在中文手册中进行了简要介绍，其具体布局以及详细介绍可以参考[The RISC-V Instruction Set Manual Volume II: Privileged Architecture Version 1.9.1](https://riscv.org/wp-content/uploads/2016/11/riscv-privileged-v1.9.1.pdf)。
-
-#### RISC-V汇编指令
-
-常用的汇编指令包括`la`、`li`、`j` 、`ld`等，可以自行在 [RISC-V中文手册](crva.ict.ac.cn/documents/RISC-V-Reader-Chinese-v2p1.pdf)附录中了解其用法。
-
-RISC-V指令集中有一类**特殊寄存器CSRs(Control and Status Registers)**，这类寄存器存储了CPU的相关信息，只有特定的控制状态寄存器指令 (csrrc、csrrs、csrrw、csrrci、csrrsi、csrrwi等)才能够读写CSRs。例如，保存`sepc`的值至内存时需要先使用相应的CSR指令将其读入寄存器，再通过寄存器保存该值，写入sepc时同理。
-
-```asm
-csrr t0, sepc
-sd t0, 0(sp)
-```
-
-#### RISC-V特权模式
-
-RISC-V有三个特权模式：U（user）模式、S（supervisor）模式和M（machine）模式。它通过设置不同的特权级别模式来管理系统资源的使用。其中M模式是最高级别，该模式下的操作被认为是安全可信的，主要为对硬件的操作；U模式是最低级别，该模式主要执行用户程序，操作系统中对应于用户态；S模式介于M模式和U模式之间，操作系统中对应于内核态，当用户需要内核资源时，向内核申请，并切换到内核态进行处理。
-
-本实验主要在S模式运行，通过调用运行在M模式的OpenSBI提供的接口操纵硬件。
-
-| Level | Encoding | Name             | Abbreviation |
-| ----- | -------- | ---------------- | ------------ |
-| 0     | 00       | User/Application | U            |
-| 1     | 01       | Supervisor       | S            |
-| 2     | 10       | Reserved         |              |
-| 3     | 11       | Machine          | M            |
-
-### B. OpenSBI介绍
-
-SBI (Supervisor Binary Interface)是 S-Mode 的 kernel 和 M-Mode 执行环境之间的标准接口，而OpenSBI项目的目标是为在M模式下执行的平台特定固件提供RISC-V SBI规范的开源参考实现。为了使操作系统内核可以适配不同硬件，OpenSBI提出了一系列规范对m-mode下的硬件进行了抽象，运行在s-mode下的内核可以按照标准对这些硬件进行操作。
-
-**为降低实验难度，我们将选择OpenSBI作为bios来进行机器启动时m模式下的硬件初始化与寄存器设置，并使用OpenSBI所提供的接口完成诸如字符打印的操作。**
-
-![](https://raw.githubusercontent.com/riscv/riscv-sbi-doc/master/riscv-sbi-intro1.png)
-
-#### RISC-V启动过程
-
-![启动过程](https://mianbaoban-assets.oss-cn-shenzhen.aliyuncs.com/2020/12/eU3yIz.png) 
-上图是RISC-V架构计算机的启动过程：
-
-- ZSBL(Zeroth Stage Boot Loader)：片上ROM程序，烧录在硬件上，是芯片上电后最先运行的代码。它的作用是加载FSBL到指定位置并运行。
-- FSBL(First Stage Boot Loader ）：启动PLLs和初始化DDR内存，对硬件进行初始化，加载下一阶段的bootloader。
-- OpenSBI：运行在m模式下的一套软件，提供接口给操作系统内核调用，以操作硬件，实现字符输出及时钟设定等工作。OpenSBI就是一个开源的RISC-V虚拟化二进制接口的通用的规范。
-- Bootloader：OpenSBI初始化结束后会通过mret指令将系统特权级切换到s模式，并跳转到操作系统内核的初始化代码。这一阶段，将会完成中断地址设置等一系列操作。之后便进入了操作系统。
-
-更多内容可参考[An Introduction to RISC-V Boot Flow](https://riscv.org/wp-content/uploads/2019/12/Summit_bootflow.pdf)。
-
-为简化实验，从ZSBL到OpenSBI运行这一阶段的工作已通过QEMU模拟器完成。运行QEMU时，我们使用-bios default选项将OpenSBI代码加载到0x80000000起始处。OpenSBI初始化完成后，会跳转到0x80200000处。因此，我们所编译的代码需要放到0x80200000处。
-
-
-### C. 内联汇编
-我们在用c语言写代码的时候会遇到直接对寄存器进行操作的情况，这时候就需要用的内联汇编了。内联汇编的详细使用方法可参考[**GCC内联汇编**](https://mp.weixin.qq.com/s/Ln4qBYvSsgRvdiK1IJqI6Q)。
-
-在此给出一个简单示例。其中，三个`:`将汇编部分分成了四部分。
-
-第一部分是汇编指令，指令末尾需要添加'\n'。指令中以`%[name]`形式与输入输出操作数中的同名操作符`[name]`绑定，也可以通过`%数字`的方式进行隐含指定。假设输出操作数列表中有1个操作数，“输入操作数”列表中有2个操作数，则汇编指令中`%0`表示第一个输出操作数，`%1`表示第一个输入操作数，`%2`表示第二个输入操作数。
-
-第二部分是输出操作数，第三部分是输入操作数。输入或者输出操作符遵循`[name] "CONSTRAINT" (variable)`格式，由三部分组成：
-
-* `[name]`：符号名用于同汇编指令中的操作数通过同名字符绑定。
-
-* `"constraint"`：限制字符串，用于约束此操作数变量的属性。字母`r`代表使用编译器自动分配的寄存器来存储该操作数变量，字母`m`代表使用内存地址来存储该操作数变量，字母`i`代表立即数。
-
-  对于输出操作数而言，等号“=”代表输出变量用作输出，原来的值会被新值替换；加号“+”代表输出变量不仅作为输出，还作为输入。此约束不适用于输入操作数。
-
-* `(variable)`：C/C++变量名或者表达式。
-
-示例中，输出操作符`[ret_val] "=r" (ret_val)`代表将汇编指令中`%[ret_val]`的值更新到变量ret_val中，输入操作符`[type] "r" (type)`代表着将()中的变量`type`放入寄存器中。
-
-第四部分是可能影响的寄存器或存储器，用于告知编译器当前内联汇编语句可能会对某些寄存器或内存进行修改，使得编译器在优化时将其因素考虑进去。
-
-```asm
-unsigned long long s_example(unsigned long long type,unsigned long long arg0) {
-    unsigned long long ret_val;
-    __asm__ volatile (
-    	#汇编指令
-        "mv x10, %[type]\n"
-        "mv x11,%[arg0]\n"
-        "mv %[ret_val], x12"
-        #输出操作数
-        : [ret_val] "=r" (ret_val)
-        #输入操作数
-        : [type] "r" (type), [arg0] "r" (arg0)
-        #可能影响的寄存器或存储器
-        : "memory"
-    );
-    return ret_val;
-}
-```
-示例二定义了一个宏，其中`%0`代表着输入输出部分的第一个符号，即`val`。其中`#reg`是c语言的一个特殊宏定义语法，相当于将`reg`进行宏替换并用双引号包裹起来。例如`write_csr(sstatus,val)`宏展开会得到：
-`({asm volatile ("csrw " "sstatus" ", %0" :: "r"(val)); })`
-
-```C
-#define write_csr(reg, val) ({
-    asm volatile ("csrw " #reg ", %0" :: "r"(val)); })
-```
-
-### D. Linux Basic
-
-#### vmlinux
-
-vmlinux通常指Linux Kernel编译出的可执行文件（Executable and Linkable Format， ELF），特点是未压缩的，带调试信息和符号表的。在本实验中，vmlinux通常指将你的代码进行编译，链接后生成的可供QEMU运行的RISC-V 64-bit架构程序。如果对vmlinux使用**file**命令，你将看到如下信息：
-
-```shell
-$ file vmlinux 
-vmlinux: ELF 64-bit LSB executable, UCB RISC-V, version 1 (SYSV), statically linked, not stripped
-```
-
-#### System.map
-
-System.map是内核符号表（Kernel Symbol Table）文件，是存储了所有内核符号及其地址的一个列表。使用System.map可以方便地读出函数或变量的地址，为Debug提供了方便。“符号”通常指的是函数名，全局变量名等等。使用`nm vmlinux`命令即可打印vmlinux的符号表，符号表的样例如下：
-
-```asm
-0000000000000800 A __vdso_rt_sigreturn
-ffffffe000000000 T __init_begin
-ffffffe000000000 T _sinittext
-ffffffe000000000 T _start
-ffffffe000000040 T _start_kernel
-ffffffe000000076 t clear_bss
-ffffffe000000080 t clear_bss_done
-ffffffe0000000c0 t relocate
-ffffffe00000017c t set_reset_devices
-ffffffe000000190 t debug_kernel
-```
-
-#### vmlinux.lds
-
-GNU ld即链接器，用于将\*.o文件（和库文件）链接成可执行文件。在操作系统开发中，为了指定程序的内存布局，ld使用链接脚本（Linker Script）来控制，在Linux Kernel中链接脚本被命名为vmlinux.lds。更多关于ld的介绍可以使用`man ld`命令。
-
-下面给出一个vmlinux.lds的例子：
-
-```asm
-/* 目标架构 */
-OUTPUT_ARCH( "riscv" )
-/* 程序入口 */
-ENTRY( _start )
-/* 程序起始地址 */
-BASE_ADDR = 0x80000000;
-SECTIONS
-{
-  /* . 代表当前地址 */
-  . = BASE_ADDR;
-  /* code 段 */
-  .text : { *(.text) }
-  /* data 段 */
-  .rodata : { *(.rodata) }
-  .data : { *(.data) }
-  .bss : { *(.bss) }
-  . += 0x8000;
-  /* 栈顶 */
-  stack_top = .;
-  /* 程序结束地址 */
-  _end = .;
-}
-```
-首先我们使用OUTPUT_ARCH指定了架构为RISC-V，之后使用ENTRY指定程序入口点为`_start`函数，程序入口点即程序启动时运行的函数，经过这样的指定后在head.S中需要编写`_start`函数，程序才能正常运行。
-
-链接脚本中有`.` `*`两个重要的符号。单独的`.`在链接脚本代表当前地址，它有赋值、被赋值、自增等操作。而`*`有两种用法，其一是`*()`在大括号中表示将所有文件中符合括号内要求的段放置在当前位置，其二是作为通配符。
-
-链接脚本的主体是SECTIONS部分，在这里链接脚本的工作是将程序的各个段按顺序放在各个地址上，在例子中就是从0x80000000地址开始放置了.text，.rodata，.data和.bss段。各个段的作用可以简要概括成：
-
-| 段名    | 主要作用                             |
-| ------- | ------------------------------------ |
-| .text   | 通常存放程序执行代码                 |
-| .rodata | 通常存放常量等只读数据               |
-| .data   | 通常存放已初始化的全局变量、静态变量 |
-| .bss    | 通常存放未初始化的全局变量、静态变量 |
-
-在链接脚本中可以自定义符号，例如stack_top与_end都是我们自己定义的，其中stack_top与程序调用栈有关。
-
-更多有关链接脚本语法可以参考[这里](https://sourceware.org/binutils/docs/ld/Scripts.html)。
-
-#### Image
-
-在Linux Kernel开发中，为了对vmlinux进行精简，通常使用objcopy丢弃调试信息与符号表并生成二进制文件，这就是Image。Lab0中QEMU正是使用了Image而不是vmlinux运行。
-
-```shell
-$ objcopy -O binary vmlinux Image --strip-all
-```
-
-此时再对Image使用**file**命令时：
-
-```shell
-$ file Image 
-image: data
-```
+有一个小建议是改变做实验的顺序，先让大家填充代码，再编写makefile文件，这样子可以直绩测试，不会让人引起困惑。另外一次让看一本书，有些不是很友好，希望能够指出本次实验所需要的部分，因为只用使用过的，才是记得最熟悉的，看过的也就看过了，再每一次实验中一点点学，会比一次性让大家看一本书要友好得多。
