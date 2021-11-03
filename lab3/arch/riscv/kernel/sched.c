@@ -11,7 +11,7 @@ struct task_struct* task[NR_TASKS];
 
 
 extern task_test_done;
-extern void __init_epc(void);
+extern void __init_sepc(void);
 
 //If next==current,do nothing; else update current and call __switch_to.
 void switch_to(struct task_struct* next) {
