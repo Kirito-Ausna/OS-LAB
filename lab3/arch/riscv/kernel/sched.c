@@ -28,7 +28,7 @@ void task_init(void) {
     //initialize task[0]
     current = (struct task_struct*)Kernel_Page;
     current->state = TASK_RUNNING;
-    current->counter = 0;
+    current->counter = 1;
     current->priority = 5;
     current->blocked = 0;
     current->pid = 0;
