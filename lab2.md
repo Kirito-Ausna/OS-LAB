@@ -31,10 +31,12 @@
 
 同lab1的文件夹映射方法，目录名为`lab2`。
 
+![image-20211101135018535](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211101135018535.png)
+
 #### 2. 理解组织文件结构
 
 ```
-kab2
+lab2
 ├── arch
 │   └── riscv
 │       ├── kernel
@@ -119,17 +121,21 @@ kab2
 void intr_enable(void) { 
     //设置sstatus[sie]=1,打开s模式的中断开关
     //your code
+    set_csr(sstatus,1<<1);
 }
 
 void intr_disable(void) {
     //设置sstatus[sie]=0,关闭s模式的中断开关
     //your code
+    clear_csr(sstatus, 0x1D);
  }
 ```
 
 **Q1.解释所填写的代码。**
 
-**答：**
+**答：**利用set_csr函数，借助csrrsi指令设置sstatus[1] = sstatus[sie] = 1,打开s模式的中断开关
+
+利用clear_csr函数，借助csrrci指令设置sstatus[1] = sstatus[sie] = 0，关闭s模式下的中断开关
 
 
 
@@ -142,8 +148,7 @@ void idt_init(void) {
     extern void trap_s(void);
     //向stvec寄存器中写入中断处理后跳转函数的地址
     //your code
-
-
+	write_csr(stvec, trap_s);
 }
 ```
 
@@ -157,10 +162,10 @@ void idt_init(void) {
 
 qemu中外设晶振的频率为10mhz，即每秒钟`time`的值将会增大$10^7$。我们可以据此来计算每次`time`的增加量，以控制时钟中断的间隔。
 
-**Q2.为了使得每次时钟中断的间隔为1s，`timebase`（即`time`的增加量）需要设置为______\__\_\__。若需要时钟中断间隔为0.1s，`timebase`需要设置为________________________。**
+**Q2.为了使得每次时钟中断的间隔为1s，`timebase`（即`time`的增加量）需要设置为___10^7___\__\_\__。若需要时钟中断间隔为0.1s，`timebase`需要设置为_______10^6_________________。**
 
 ```c
-static uint64_t timebase =1;//需要自行修改timebase为合适的值，使得时钟中断间隔为1s
+static uint64_t timebase =1e7;//需要自行修改timebase为合适的值，使得时钟中断间隔为1s
 ```
 
 
@@ -173,7 +178,10 @@ void clock_init(void) {
     //对sie寄存器中的时钟中断位设置（sie[stie]=1）以启用时钟中断。
     //设置第一个时钟中断
     //your code
-
+    set_csr(sie,1<<5);
+    ticks = 1;
+    uint64_t time = get_cycles();
+    trigger_time_interrupt(time);
 }
 ```
 
@@ -183,14 +191,15 @@ void clock_init(void) {
 void clock_set_next_event(void) { 
     //获取当前cpu cycles数并计算下一个时钟中断的发生时刻，利用sbi.c中相关函数触发时钟中断。
     //your code
-
-
+    uint64_t time = get_cycles() + timebase;
+    trigger_time_interrupt(time);
+    ticks++;
 }
 ```
 
 **Q3.解释`sbi.c`中`trigger_time_interrupt()`函数。**
 
-答：
+答：该函数利用lab1所写的sbi_call函数，传入sbi指令类型为0，即set_sbi_timer()函数，传入中断时刻，系统到达该时刻时会触发中断。
 
 
 
@@ -205,18 +214,29 @@ void clock_set_next_event(void) {
 ```asm
 trap_s:
 	#save caller-saved registers and spec
-
+    addi sp, sp, -32
+	sd ra, 24(sp)
+	sd t0, 16(sp)
+	csrr t0, sepc
+	sd t0, 8(sp)
+	sd a0, 0(sp) 
 	# call handler_s(scause)
-	
+	csrr a0, scause
+	call handler_s
 	# load sepc and caller-saved registers
-	
+	ld ra, 24(sp)
+	ld t0, 8(sp)
+	csrw sepc, t0
+	ld t0, 16(sp)
+	ld a0, 0(sp)
+	addi sp, sp, 32
 	sret
 
 ```
 
 **Q4.为什么要保存`sepc`寄存器：**
 
-答：
+答：发生异常时，sepc保存了pc寄存器的值，指示下一句应该执行的指令，在异常处理完成后，sret会将sepc的值写回pc，让程序继续执行，所以需要对sepc寄存器进行保护。
 
 
 
@@ -229,12 +249,15 @@ trap_s:
 ```c
 void handler_s(uint64_t cause){
     // interrupt	
-	if ( ) {
+	if (cause) {
 		// supervisor timer interrupt
-		if ( ) {	
+		if (ticks >= 1) {	
 			//设置下一个时钟中断，打印当前的中断数目。
     		//your code
-			
+			puts("[S] Supervisor Timer Interrupt ");
+			put_num(ticks);
+			puts("\n");
+			clock_set_next_event();
 		}
 	}
 }
@@ -242,182 +265,26 @@ void handler_s(uint64_t cause){
 
 **Q5.触发时钟中断时，`[m|s]cause`寄存器的值是？据此填写代码中的条件判断语句。**
 
-答：
+答：1，表示发生了中断。
 
 
 
 **Q6.【同步异常与中断的区别】当处理同步异常时应该在退出前给`epc`寄存器+4（一条指令的长度），当处理中断时则不需要，请解释为什么要这样做。**
 
-答：
-
-
+答：同步异常在指令执行后进入中断(trap)，所以需要epc+4以恢复执行下一条语句，而中断可以在指令之间发生，所以无需+4，继续执行当前语句即可。
 
 ### 3.5 编译及测试
 
 请修改`clock.c`中的`ID:123456`，确保输出自己的学号。仿照`lab1`进行调试，预期的实验结果如下，**每隔一秒触发一次时钟中断，打印一次信息**。请将样例截图替换为自己的截图。
 
-![image-20211012213252334](https://raw.githubusercontent.com/HHtttterica/Pics/main/image-20211012213252334.png)
+![31910339416d2a587728c2ae912809d](C:\Users\欸？\AppData\Local\Temp\WeChat Files\31910339416d2a587728c2ae912809d.png)
 
 ## 4 讨论和心得
 
-请在此处填写实验过程中遇到的问题及相应的解决方式。
+1. 请在此处填写实验过程中遇到的问题及相应的解决方式。
 
-本实验本意是使用OpenSBI平台避免编写过多的汇编代码以简化实验，但是这样做之后省去了实际时钟中断处理时的复杂跳转，把整个过程简化得过于简单了。欢迎同学们对本实验提出建议。
+RISCV中文文档附录A的指令集，关于csr的指令那里有不少相互矛盾的地方，特别是csrrw csrrc csrrsi那里，比较混乱，给我一开始写实验造成了很大困扰，以及发现代码有一些和我们上一个实验不太一致的地方，比如trap.c里面，put_num变成了string_num，不过如果理解了代码的整体逻辑，这些问题都很容易被解决。
 
+2. 本实验本意是使用OpenSBI平台避免编写过多的汇编代码以简化实验，但是这样做之后省去了实际时钟中断处理时的复杂跳转，把整个过程简化得过于简单了。欢迎同学们对本实验提出建议。
 
-
-## 附录
-
-### A. RISC-V中的异常
-
-异常(trap)是指是不寻常的运行时事件，由硬件或软件产生，当异常产生时控制权将会转移至异常处理程序。异常是操作系统最基础的概念，一个没有异常的操作系统无法进行正常交互。
-
-RISC-V将异常分为两类。一类是硬件中断(interrupt)，它是与指令流异步的外部事件，比如鼠标的单击。另外一类是同步异常(exception)，这类异常在指令执行期间产生，如访问了无效的存储器地址或执行了具有无效操作码的指令。
-
-这里我们用异常(trap)作为硬件中断(interrupt)和同步异常(exception)的集合，另外trap指的是发生硬件中断或者同步异常时控制权转移到handler的过程。
-
-> 后文统一用异常指代trap，中断/硬件中断指代interrupt，同步异常指代exception。
-
-### B. M模式下的异常
-
-#### 1. 硬件中断的处理（以时钟中断为例）
-
-简单地来说，中断处理经过了三个流程：中断触发、判断处理还是忽略、可处理时调用处理函数。
-
-* 中断触发：时钟中断的触发条件是这个hart（硬件线程）的时间比较器`mtimecmp`小于实数计数器`mtime`。
-
-* 判断是否可处理：
-
-  当时钟中断触发时，并不一定会响应中断信号。M模式只有在全局中断使能位`mstatus[mie]`置位时才会产生中断，如果在S模式下触发了M模式的中断，此时无视`mstatus[mie]`直接响应，即运行在低权限模式下，高权限模式的全局中断使能位一直是enable状态。
-
-  此外，每个中断在控制状态寄存器`mie`中都有自己的使能位，对于特定中断来说，需要考虑自己对应的使能位，而控制状态寄存器`mip`中又指示目前待处理的中断。
-
-  **以时钟中断为例，只有当`mstatus[mie]`=1，`mie[mtie]`=1，且`mip[mtip]`=1时，才可以处理机器的时钟中断。**其中`mstatus[mie]`以及`mie[mtie]`需要我们自己设置，而`mip[mtip]`在中断触发时会被硬件自动置位。
-
-* 调用处理函数：
-
-  当满足对应中断的处理条件时，硬件首先会发生一些状态转换，并跳转到对应的异常处理函数中，在异常处理函数中我们可以通过分析异常产生的原因判断具体为哪一种，然后执行对应的处理。
-
-  为了处理异常结束后不影响hart正常的运行状态，我们首先需要保存当前的状态即上下文切换。我们可以先用栈上的一段空间来把**全部**寄存器保存，保存完之后执行到我们编写的异常处理函数主体，结束后退出。
-
-#### 2. M模式下的异常相关寄存器
-
-M模式异常需要使用的寄存器首先有lab1提到的`mstatus`，`mip`，`mie`，`mtvec`寄存器，这些寄存器需要我们操作；剩下还有`mepc`，`mcause`寄存器，这些寄存器在异常发生时**硬件会自动置位**，它们的功能如下：
-
-* `mepc`：存放着中断或者异常发生时的指令地址，当我们的代码没有按照预期运行时，可以查看这个寄存器中存储的地址了解异常处的代码。通常指向异常处理后应该恢复执行的位置。
-
-* `mcause`：存储了异常发生的原因。
-
-* `mstatus`：Machine Status Register，其中m代表M模式。此寄存器中保持跟踪以及控制hart(hardware thread)的运算状态。通过对`mstatus`进行位运算，可以实现对不同bit位的设置，从而控制不同运算状态。
-
-* `mie`、`mip`：`mie`以及`mip`寄存器是Machine Interrup Registers，用来保存中断相关的一些信息，通过`mstatus`上mie以及mip位的设置，以及`mie`和`mip`本身两个寄存器的设置可以实现对硬件中断的控制。注意mip位和`mip`寄存器并不相同。
-
-* `mtvec`：Machine Trap-Vector Base-Address Register，主要保存M模式下的trap vector（可理解为中断向量）的设置，包含一个基地址以及一个mode。 
-
-与时钟中断相关的还有`mtime`和`mtimecmp`寄存器，它们的功能如下：
-
-* `mtime`：Machine Time Register。保存时钟计数，这个值会由硬件自增。
-* `mtimecmp`：Machine Time Compare Register。保存需要比较的时钟计数，当`mtime`的值大于或等于`mtimecmp`的值时，触发时钟中断。
-
-需要注意的是，`mtime`和`mtimecmp`寄存器需要用MMIO的方式即使用内存访问指令（sd，ld等）的方式交互，可以将它们理解为M模式下的一个外设。
-
-事实上，异常还与`mideleg`和`medeleg`两个寄存器密切相关，它们的功能将在**S模式下的异常**部分讲解，主要用于将M模式的一些异常处理委托给S模式。
-
-#### 3. 同步异常的处理
-
-同步异常的触发条件是当前指令执行了未经定义的行为，例如：
-
-* Illegal instruction：跳过判断可以处理还是忽略的步骤，硬件会直接经历一些状态转换，然后跳到对应的异常处理函数。
-* 环境调用同步异常ecall：主要在低权限的mode需要高权限的mode的相关操作时使用的，比如系统调用时U-mode call S-mode ，在S-mode需要操作某些硬件时S-mode call M-mode。
-
-需要注意的是，不管是中断还是同步异常，都会经历相似的硬件状态转换，并跳到**同一个**异常处理地址（由`mtvec`/`stvec`寄存器指定），异常处理函数根据`mcause`寄存器的值判断异常出现原因，针对不同的异常进行不同的处理。
-
-### B. S模式下的异常
-
-由于hart位于S模式，我们需要在S模式下处理异常。这时首先要提到委托（delegation）机制。
-
-#### 1. 委托机制
-
-**RISC-V架构所有mode的异常在默认情况下都跳转到M模式处理**。为了提高性能，RISC-V支持将低权限mode产生的异常委托给对应mode处理，该过程涉及了`mideleg`和`medeleg`这两个寄存器。
-
-* `mideleg`：Machine Interrupt Delegation。该寄存器控制将哪些中断委托给S模式处理，它的结构可以参考`mip`寄存器，如`mideleg[5]`对应于 S模式的时钟中断，如果把它置位， S模式的时钟中断将会移交 S模式的异常处理程序，而不是 M模式的异常处理程序。
-* `medeleg`：Machine Exception Delegation。该寄存器控制将哪些同步异常委托给对应mode处理，它的各个位对应`mcause`寄存器的返回值。
-
-#### 2. S模式下时钟中断处理流程
-
-事实上，即使在`mideleg`中设置了将S模式产生的时钟中断委托给S模式，委托仍未完成，因为硬件产生的时钟中断仍会发到M模式（`mtime`寄存器是M模式的设备），所以我们需要**手动触发S模式下的时钟中断**。
-
-此前，假设设置好`[m|s]status`以及`[m|s]ie`，即我们已经满足了时钟中断在两种mode下触发的使能条件。接下来一个时钟中断的委托流程如下：
-
-1. 当`mtimecmp`小于`mtime`时，**触发M模式时钟中断**，硬件**自动**置位`mip[mtip]`。
-
-2. 此时`mstatus[mie]`=1，`mie[mtie]`=1，且`mip[mtip]`=1 表示可以处理M模式的时钟中断。
-
-3. 此时hart发生了异常，硬件会自动经历状态转换，其中`pc`被设置为`mtvec`的值，即程序将跳转到我们设置好的M模式处理函数入口。
-
-   （注：`pc`寄存器是用来存储指向下一条指令的地址，即下一步要执行的指令代码。）
-
-4. M模式处理函数将分析异常原因，判断为时钟中断，为了将时钟中断委托给S模式，于是将`mip[stip]`置位，并且为了防止在S模式处理时钟中断时继续触发M模式时钟中断，于是同时将`mie[mtie]`清零。
-
-5. M模式处理函数处理完成并退出，此时`sstatus[sie]`=1，`sie[stie]`=1，且`sip[stip]`=1(由于sip是mip的子集，所以第4步中令`mip[stip]`置位等同于将`sip[stip]`置位)，于是**触发S模式的时钟中断**。
-
-6. 此时hart发生了异常，硬件自动经历状态转换，其中`pc`被设置为stvec，即跳转到我们设置好的S模式处理函数入口。
-
-7. S模式处理函数分析异常原因，判断为时钟中断，于是进行相应的操作，然后利用`ecall`触发异常，跳转到M模式的异常处理函数进行最后的收尾。
-
-8. M模式异常处理函数分析异常原因，发现为ecall from S-mode，于是设置`mtimecmp`+=100000，将`mip[stip]`清零，表示S模式时钟中断处理完毕，并且设置`mie[mtie]`恢复M模式的中断使能，保证下一次时钟中断可以触发。
-
-9. 函数逐级返回，整个委托的时钟中断处理完毕。
-
-#### 3. 中断前后硬件的自动转换
-
-当`mtime`寄存器中的的值大于`mtimecmp`时，`sip[stip]`会被置位。此时，如果`sstatus[sie]`与`sie[stie]`也都是1，硬件会自动经历以下的状态转换（这里只列出S模式下的变化）：
-
-* 发生异常的时`pc`的值被存入`sepc`，且`pc`被设置为`stvec`。
-* `scause`按图 10.3根据异常类型设置，`stval`被设置成出错的地址或者其它特定异
-  常的信息字。
-* `sstatus` CSR中的 SIE 位置零，屏蔽中断，且中断发生前的`sstatus[sie]`会被存入`sstatus[spie]`。
-* 发生异常时的权限模式被保存在`sstatus[spp]`，然后设置当前模式为 S模式。 
-
-在我们处理完中断或异常，并将寄存器现场恢复为之前的状态后，**我们需要用`sret`指令回到之前的任务中**。`sret`指令会做以下事情：
-
-- 将`pc`设置为`sepc`。
-- 通过将 `sstatus`的 SPIE域复制到`sstatus[sie]`来恢复之前的中断使能设置。
-- 并将权限模式设置为`sstatus[spp]`。
-
-### B. gef插件
-
-1. 新建gdbtool文件夹（方便使用其他插件）
-
-   ```shell
-   $ cd ~
-   $ mkdir gdbtool
-   ```
-
-2. 新建gef.py插件
-
-   ```shell
-   $ cd ~/gdbtool
-   $ vim gef.py
-   (此时将https://github.com/hugsy/gef-legacy/blob/master/gef.py的代码粘贴过来)
-   (然后使用:wq保存并退出vim)
-   ```
-
-3. 编写gdb配置文件
-
-   ```shell
-   $ cd ~
-   $ echo "source ~/gdbtool/gef.py" > .gdbinit
-   ```
-
-4. 此时已经成功添加插件
-
-   ```shell
-   $ riscv64-unknown-linux-gnu-gdb
-   (可以查看对应显示为gef)
-   ```
-
-5. 若要使用其他插件
-
-   * 首先在 ~/gdbtool目录下添加对应插件的py文件
-   * 然后使用修改~/.gdbinit文件
+我觉得本次实验难度适中，一开始因为RISCV和相应汇编掌握不好，所以一头雾水，但按照助教的建议稍微花了点时间去仔细阅读了相应文档，顿时有醍醐灌顶之感，实验也很顺利地写出来。如果本实验需要写过多的汇编代码的话，可能我学了之后也要花过多时间，对于一次实验来说，我觉得这是不太合适。不过时钟中断的复杂跳转可以以思考题的形式给出。让大家去了解整个过程，但不必写代码以降低难度。
