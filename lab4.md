@@ -145,7 +145,7 @@ void create_mapping(uint64_t *pgtbl, uint64_t va, uint64_t pa, uint64_t sz, int 
 
 * 调用 `create_mapping`函数将内核起始（`0x80000000`）的16MB空间映射到高地址（以 `0xffffffe000000000`为起始地址）。
 * 对内核起始地址（`0x80000000`）的16MB空间做等值映射。
-* 将必要的硬件地址（如`0x10000000`为起始地址的UART）进行等值映射，无偏移。
+* 将必要的硬件地址（即`0x10000000`为起始地址的UART）进行等值映射，无偏移。
 
 ```C
 void paging_init()
@@ -193,7 +193,7 @@ task[i]->thread.sp=;
 
 #### 3.5.1 权限保护
 
-修改内核起始地址到高地址的映射以及等值映射，通过修改调用`create_mapping`时的`perm`参数，修改对内核空间不同section所在页属性的设置，完成对不同section的保护，其中text段的权限为 `r-x`, rodata段为`r--`, 其他段为 `rw-`。
+修改内核起始地址到高地址的映射以及等值映射，对其中不同的段执行不同的权限保护。通过修改调用`create_mapping`时的`perm`参数，修改对内核空间不同section所在页属性的设置，完成对不同section的保护，其中text段的权限为 `r-x`, rodata段为`r--`, 其他段为 `rw-`。
 
 参考`vmliunx.lds`中对地址的分配，使用相应的标签（如`(uint64_t)&text_start`）计算不同段的起始物理地址、起始虚拟地址及映射大小，给出修改后的`paging_init()`。
 
