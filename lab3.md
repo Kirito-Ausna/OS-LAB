@@ -28,6 +28,8 @@
 
 同lab2的文件夹映射方法，目录名为lab3。
 
+![image-20211119214440064](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211119214440064.png)
+
 #### 3.1.2 组织文件结构
 
 ```
@@ -318,7 +320,7 @@ __switch_to:
 
 ##### 1 短作业优先非抢占式 算法
 
-![image-20211027114403627](https://raw.githubusercontent.com/HHtttterica/Pics/main/image-20211027114403627.png)
+![image-20211121023813124](C:\Users\欸？\AppData\Roaming\Typora\typora-user-images\image-20211121023813124.png)
 
 ##### 2 优先级抢占式算法 
 

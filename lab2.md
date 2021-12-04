@@ -127,7 +127,7 @@ void intr_enable(void) {
 void intr_disable(void) {
     //设置sstatus[sie]=0,关闭s模式的中断开关
     //your code
-    clear_csr(sstatus, 0x1D);
+    clear_csr(sstatus, 1);
  }
 ```
 
